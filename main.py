@@ -1,27 +1,32 @@
 from typing import Final
 import os
 from dotenv import load_dotenv
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.ext.commands import bot
 from discord import Intents, Message
 import discord
 import time
 from stringParsing import emoToPic
-from weather import getTemp
-from data import normal, users, replies, replies2, images, save, channels, botinfo, data
+from weather import getTemp, weatherHandler
+from data import normal, users, replies, replies2, images, save, channels, botinfo, data, trivia, album, youtube as yt
 from counting import rikaIncr, skullIncr, counting
 from readingHigurashi import readingHigurashi, nextline
 import asyncio
 from sayAfter import sayAfter
 from media import media, nextline2
+from trivia import triviaHandler
+from album import albumHandler, getNextPhoto
+from youtube import youtubeHandler, getLink, mostRecent
 
 load_dotenv()
 TOKEN: Final[str] = os.getenv('DISCORD_TOKEN')
 
 intents: Intents = Intents.default()
+#intents = discord.Intents.none()
 intents.members = True #NOQA
 intents.reactions = True #NOQA
 intents.message_content = True # NOQA
+intents.guilds = True # NOQA
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
@@ -40,11 +45,36 @@ async def send_message(message: Message, user_message: str, serverid : str) -> N
 
     sentRika = False
 
-    lowered : str = user_message.lower();
+    lowered : str = user_message.lower()
     result = user_message.split()
     result2 = lowered.split()
 
     userid = str(message.author.id)
+
+    if (userid in users[serverid] and users[serverid][userid]['trivia']):
+        if (lowered == 'rika stop trivia'):
+            status = await triviaHandler(result2, lowered, message, user_message, serverid)
+            if (status == 0):
+                return
+        trivNum = users[serverid][userid]['trivNum']
+        triviaName = users[serverid][userid]['triviaName']
+        triv = trivia[serverid][triviaName]
+        length = triv['length']
+        index = trivNum % length
+        if (user_message.lower() in triv['questions'][index]['answers']):
+            trivNum = trivNum + 1
+            users[serverid][userid]['trivNum'] = trivNum
+            index = trivNum % length
+            question = triv['questions'][index]['question']
+            await message.channel.send('correct nipah~!')
+            await message.channel.send(file=discord.File('images/ri_waraia1.png'))
+            await message.channel.send(question)
+            return
+        else:
+            await message.channel.send('incorrect meep')
+            await message.channel.send(file=discord.File('images/ri_komarua2.png'))
+            return
+
     if (userid in users[serverid]):
         if ('💀' in lowered):
             await skullIncr(userid, message.channel, 'used', serverid)
@@ -64,15 +94,37 @@ async def send_message(message: Message, user_message: str, serverid : str) -> N
             return
 
         #counting
-        status = await counting(result, result2, user_message, message, lowered, serverid)
+        status = await counting(result, result2, message, lowered, serverid)
         if (status == 0):
             return
 
         #higurashi
-        if (len(result2) >= 3 and result2[1] == 'higurashi'):
+        if ('higurashi' in lowered):
             status = await readingHigurashi(result2, message, lowered, serverid)
             if (status == 0):
                 return
+
+        #trivia
+        if ('trivia' in lowered):
+            status = await triviaHandler(result2, lowered, message, user_message, serverid)
+            if (status == 0):
+                return
+
+        #album
+        if ('album' in lowered):
+            status = await albumHandler(result2, lowered, message, user_message, serverid)
+            if (status == 0):
+                return
+
+        #weather
+        status = await weatherHandler(result2, lowered, message, user_message, serverid)
+        if (status == 0):
+            return
+
+        #youtube
+        status = await youtubeHandler(result, result2, lowered, message, user_message, serverid)
+        if (status == 0):
+            return
 
         #change someones name
         if (len(result2) >= 5 and result2[1] == 'turn' and result2[3] == 'into'):
@@ -188,14 +240,6 @@ async def send_message(message: Message, user_message: str, serverid : str) -> N
         await message.channel.send(file=discord.File('images/ri_majimea1.png'))
         return
 
-    if ('sheepin' in lowered and 'meowbert' in lowered):
-        await message.channel.send(file=discord.File('images/sheepinmeow.jpg'))
-        return
-
-    if('yeasty' in lowered and 'yarlo' in lowered):
-        await message.channel.send(file=discord.File('images/yeastyyarlo.jpg'))
-        return
-
     if('i agree' in lowered and str(message.author) == 'tomoyosakagami'):
         await message.channel.send(file=discord.File('images/charlesapprove.jpg'))
         return
@@ -206,8 +250,13 @@ async def send_message(message: Message, user_message: str, serverid : str) -> N
 
     #reply to user
     if (str(message.author.id) in users[serverid]):
-        if (users[serverid][str(message.author.id)]['isReply']):
-            await message.channel.send(users[serverid][str(message.author.id)]['replyString'])
+        initDict = users[serverid][str(message.author.id)]['replyStrings']
+        initStrings = initDict.keys()
+        for initString in initStrings:
+            if (initString in lowered):
+                await message.channel.send(initDict[initString]['replyString'])
+                if (emoToPic(initDict[initString]['mood'], serverid, False) != 'none'):
+                    await message.channel.send(file=discord.File(emoToPic(initDict[initString]['mood'], serverid, True)))
 
     #reply to message
     if (user_message in replies[serverid]):
@@ -236,10 +285,22 @@ async def send_message(message: Message, user_message: str, serverid : str) -> N
                 await message.channel.send(file=discord.File(emoToPic(replies2[serverid][key]['mood'], serverid, True)))
 
     #send image on mention
-    keys = list(images[serverid].keys())
-    for i in range(len(keys)):
-        if (keys[i] in lowered):
-            await message.channel.send(file=discord.File('images2/' + serverid + '/'+ str(images[serverid][keys[i]]) + '.jpg'))
+    indice = ''
+    maxLen = 0
+    for indexString in images[serverid]:
+        names = images[serverid][indexString]
+        containsAll = True
+        for name in names:
+            if (not (name in lowered)):
+                containsAll = False
+                break
+        if (containsAll):
+            if (len(names) > maxLen):
+                maxLen = len(names)
+                indice = indexString
+    if (indice != ''):
+        await message.channel.send(file=discord.File('images2/' + serverid + '/'+ str(indice) + '.jpg'))
+        sentRika = True
 
     if ('rika' in lowered and not sentRika):
         if (botinfo[serverid]['mad'] > 0):
@@ -272,11 +333,14 @@ async def on_raw_reaction_add(payload):
         else:
             await channel.send(name + ' just reacted with the skull emoji :skull:')
     elif (payload.emoji.name == '🥶'):
-        temp = getTemp('Pittsburgh')
+        cityname = 'Pittsburgh'
+        if (users[serverid][userid]['city'] != ''):
+            cityname = users[serverid][userid]['city']
+        temp = getTemp(cityname)
         if (temp > 40):
             await channel.send(name + ' just reacted with the cold_face emoji. rika just wanted to inform ' +
                                                            name + ' that the freezing point of water is 32 degrees farenheit, and currently it is ' + str(temp) +
-                                                           ' degrees farenheit in Pittsburgh. rika thinks ' + name + ' should be more mindful of what they say and do in digital spaces,'
+                                                           ' degrees farenheit in ' + cityname + '. rika thinks ' + name + ' should be more mindful of what they say and do in digital spaces,'
                                                            ' and in particular what reactions they add to discord messages sent by other people. rika thinks ' + name + ' needs to understand' 
                                                            ' that misinformation is a real and pressing issue in today\'s online environment, and one which can be solved only'
                                                            ' by a coordinated effort from individuals to moderate and critically analyze what they say online and what reactions'
@@ -290,16 +354,55 @@ async def on_raw_reaction_add(payload):
             await rikaIncr(userid, channel, serverid)
     elif (payload.emoji.name == '👍'):
         if (payload.message_id == botinfo[serverid]['readid']):
-            #message = await channel.fetch_message(payload.message_id)
-            #user = bot.get_user(payload.user_id)
-            #await message.remove_reaction(payload.emoji, user)
+            message = await channel.fetch_message(payload.message_id)
+            user = bot.get_user(payload.user_id)
+            try:
+                await message.remove_reaction(payload.emoji, user)
+            except:
+                print('NO PERMISSION TO REMOVE THUMBS UP')
             botinfo[serverid]['readid'] = await nextline(channel, serverid)
         elif (payload.message_id == botinfo[serverid]['readid2']):
-            #message = await channel.fetch_message(payload.message_id)
-            #user = bot.get_user(payload.user_id)
-            #await message.remove_reaction(payload.emoji, user)
+            message = await channel.fetch_message(payload.message_id)
+            user = bot.get_user(payload.user_id)
+            try:
+                await message.remove_reaction(payload.emoji, user)
+            except:
+                print('NO PERMISSION TO REMOVE THUMBS UP')
             botinfo[serverid]['readid2'] = await nextline2(channel, serverid)
+        elif (payload.message_id == users[serverid][userid]['albumView']):
+            message = await channel.fetch_message(payload.message_id)
+            user = bot.get_user(payload.user_id)
+            try:
+                await message.remove_reaction(payload.emoji, user)
+            except:
+                print('NO PERMISSION TO REMOVE THUMBS UP')
+            await getNextPhoto(serverid, userid, channel)
     return
+
+@tasks.loop(hours=2)
+async def youtubeLoop():
+    print('loopin')
+    for serverid in yt:
+        for chanName in yt[serverid]:
+            ytChannel = yt[serverid][chanName]['id']
+            videos = mostRecent(ytChannel)
+            if ('error' in videos):
+                print('error getting videos from ' + chanName)
+                break
+            mostRecentLink = yt[serverid][chanName]['mostRecent']
+            links = []
+            for video in videos['items']:
+                if (video['id']['videoId'] == mostRecentLink):
+                    break
+                else:
+                    links.append(video['id']['videoId'])
+            if (len(links) >= 1):
+                yt[serverid][chanName]['mostRecent'] = links[0]
+                save('youtube')
+            for discChannel in yt[serverid][chanName]['broadcast']:
+                channel = bot.get_channel(int(discChannel))
+                for link in links:
+                    await channel.send(getLink(link))
 
 @bot.event
 async def on_ready() -> None:
@@ -307,6 +410,7 @@ async def on_ready() -> None:
     for guild in bot.guilds:
         print(guild.name)
         print(str(guild.id))
+    youtubeLoop.start()
 
 @bot.event
 async def on_message(message: Message) -> None:
@@ -314,8 +418,8 @@ async def on_message(message: Message) -> None:
         return
 
     serverid = str(message.guild.id)
-    if (serverid == '668275376769859590'):
-        serverid = '1023436889165934592'
+    #if (serverid == '668275376769859590'):
+    #    serverid = '1147240534344208425'
     if (not (serverid in users)):
         os.mkdir('images2/' + serverid)
         os.mkdir('text/' + serverid)
@@ -346,7 +450,6 @@ async def on_message(message: Message) -> None:
 
     print(f'[{channel}] {username}: "{user_message}"')
     await send_message(message, user_message, serverid)
-
 
 def main() -> None:
     bot.run(TOKEN)

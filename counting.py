@@ -1,6 +1,7 @@
 from data import normal, users, save
 import discord
 from stringParsing import emoToPic
+from sorting import mergeSort
 
 async def rikaIncr(userid : str, channel, serverid):
     users[serverid][userid]['rikaCount'] = users[serverid][userid]['rikaCount'] + 1
@@ -80,35 +81,6 @@ async def howManySkull(user : str, channel, serverid):
         await channel.send(file=discord.File('images/higurashiold/ri_majimea1.png'))
     return
 
-def merge(list1, list2):
-    list = []
-    i1 = 0
-    i2 = 0
-    while (i1 != len(list1) and i2 != len(list2)):
-        if (list1[i1][1] >= list2[i2][1]):
-            list.append(list2[i2])
-            i2 = i2 + 1
-        else:
-            list.append(list1[i1])
-            i1 = i1 + 1
-    if (i1 == len(list1)):
-        while (i2 != len(list2)):
-            list.append(list2[i2])
-            i2 = i2 + 1
-    elif (i2 == len(list2)):
-        while (i1 != len(list1)):
-            list.append(list1[i1])
-            i1 = i1 + 1
-    return list
-
-def mergeSort(list):
-    if (len(list) <= 1):
-        return list
-    n = len(list)
-    list1 = mergeSort(list[0:(n//2)])
-    list2 = mergeSort(list[(n//2):n])
-    return merge(list1,list2)
-
 async def rikaLeaderboard(channel, serverid):
     keys = users[serverid].keys()
     list = []
@@ -165,7 +137,7 @@ async def skullApology(userid : str, channel, serverid):
         await channel.send('as long as you are sincere ' + name + ', rika forgives you! rika has removed one skull from your record!')
     await channel.send(file=discord.File('images/ri_defa1.png'))
 
-async def counting(result, result2, user_message, message, lowered, serverid):
+async def counting(result, result2, message, lowered, serverid):
     # skull count
     if (len(result2) == 6 and result2[1] == 'what' and result2[2] == 'is' and result2[4] == 'skull' and result2[
         5] == 'count'):

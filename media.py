@@ -1,23 +1,9 @@
 from data import images, botinfo, save, books
 import discord
 import os
-from stringParsing import parser1,isSpaces
 import asyncio
-
-def isPeriod(s):
-    if (s == '.'):
-        return True
-    elif (s == '。'):
-        return True
-    elif (s == '!'):
-        return True
-    elif (s == '！'):
-        return True
-    elif (s == '?'):
-        return True
-    elif (s == '？'):
-        return True
-    return False
+from stringParsing import parser1, isSpaces, isPeriod, multipleQoutes
+from sorting import mergeSortLex, listEquality
 
 def readUntilPeriod(serverid):
     s = ''
@@ -76,37 +62,48 @@ async def getPos(channel, serverid):
 async def media(result, result2, lowered, message, user_message, serverid):
     # associates image to name
     if (len(result2) >= 4 and result2[1] == 'this' and result2[2] == 'is' and message.attachments):
+        names = multipleQoutes(lowered)
         thing = ''
-        for i in range(3, len(result)):
-            thing = thing + result[i] + ' '
-        thing = thing[:len(thing) - 1]
-        if (thing in images[serverid]):
-            await message.channel.send('rika already know what ' + thing + ' look like!')
-            await message.channel.send(file=discord.File('images2/' + serverid + '/' + str(images[thing]) + '.jpg'))
-            return 0
-        vals = list(images[serverid].values())
+        for i in range(len(names)-1):
+            thing = thing + names[i] + ' and '
+        thing = thing + names[len(names)- 1]
+        names = mergeSortLex(names)
+        for indexString in images[serverid]:
+            if (listEquality(names, images[serverid][indexString])):
+                await message.channel.send('rika already know what ' + thing + ' look like!')
+                await message.channel.send(file=discord.File('images2/' + serverid + '/' + indexString + '.jpg'))
+                return 0
+        keys = list(images[serverid].keys())
         index = 0
-        while (index in vals):
+        while (str(index) in keys):
             index = index + 1
-        images[serverid][thing] = index
+        images[serverid][str(index)] = names
         await message.attachments[0].save('images2/' + serverid + '/' + str(index) + '.jpg')
         save('images')
         await message.channel.send('mii~! so this is ' + thing + '!')
         return 0
 
+
     if (len(result2) >= 3 and result2[1] == 'forget'):
+        names = multipleQoutes(lowered)
         thing = ''
-        for i in range(2, len(result)):
-            thing = thing + result[i] + ' '
-        thing = thing[:len(thing) - 1]
+        for i in range(len(names) - 1):
+            thing = thing + names[i] + ' and '
+        thing = thing + names[len(names) - 1]
+        names = mergeSortLex(names)
         if (thing == ''):
             await message.channel.send('forget what mii?')
             return 0
-        if (not thing in images[serverid]):
+        exists = False
+        index = -1
+        for indexString in images[serverid]:
+            if (images[serverid][indexString] == names):
+                index = int(indexString)
+                break
+        if (index == -1):
             await message.channel.send('mii what\'s ' + thing + '?')
             return 0
-        index = images[serverid][thing]
-        del images[serverid][thing]
+        del images[serverid][str(index)]
         save('images')
         os.remove('images2/' + serverid + '/' + str(index) + '.jpg')
         await message.channel.send('bye bye ' + thing)

@@ -15,42 +15,52 @@ async def registrate(result, message, serverid):
         return
     normal[serverid][user] = userid
     if (not userid in users[serverid]):
-        users[serverid][userid] = {'isReply': False, 'replyString': '', 'changed': False, 'changeName': '', 'oldName': '',
-                         'morphTime': 0.0, 'skullCount': 0, 'givenName': user, 'rikaCount': 0}
+        users[serverid][userid] = {'isReply': False, 'replyStrings': {}, 'changed': False, 'changeName': '', 'oldName': '',
+                         'morphTime': 0.0, 'skullCount': 0, 'givenName': user, 'rikaCount': 0, 'trivia': False, 'trivNum': 0, 'triviaName': '', 'replyStrings': {}, 'albumName': '', 'album': False, 'albumNum': 0, 'albumView': -1, 'albumAuto': False, 'city': ''}
     await message.channel.send('hi ' + user)
     await message.channel.send(file=discord.File('images/ri_defa1.png'))
     save('users')
     save('normal')
     return
 
-async def repeatAfter(user_message, result, message, serverid):
-    replyString = parser1(user_message)
-    user = result[len(result) - 1]
+async def repeatAfter(user_message, result2, message, serverid):
+    strings = parser2(user_message)
+    replyString = strings[2]
+    middleString = strings[1]
+    initString = strings[0]
+    middleStrings = middleString.split()
+    middleString = middleStrings[1]
+    user = result2[2]
     if (not user in normal[serverid]):
         await message.channel.send('rika don\'t know ' + user)
         return
     if (replyString == ''):
-        await message.channel.send('reply what mii?')
+        await message.channel.send('say what mii?')
         return
     userid = normal[serverid][user]
-    users[serverid][userid]['isReply'] = True
-    users[serverid][userid]['replyString'] = replyString
+    users[serverid][userid]['replyStrings'][initString] = {}
+    users[serverid][userid]['replyStrings'][initString]['replyString'] = replyString
+    if (middleString == 'say' or emoToPic(middleString, serverid, False) == 'none'):
+        users[serverid][userid]['replyStrings'][initString]['mood'] = 'none'
+    else:
+        users[serverid][userid]['replyStrings'][initString]['mood'] = middleString
     await message.channel.send(file=discord.File('images/ri_niyaria1.png'))
     save('users')
     return
 
-async def stopReplyTo(result, message, serverid):
-    user = result[len(result) - 1]
+async def stopReplyTo(result2, message, serverid):
+    initString = parser1(message.content)
+    user = result2[4]
     if (not user in normal[serverid]):
         await message.channel.send('smh rika don\'t even know ' + user)
         await message.channel.send(file=discord.File('images/ri_fumana1.png'))
         return
     userid = normal[serverid][user]
-    if (not users[serverid][userid]['isReply']):
+    if (not initString in users[serverid][userid]['replyStrings']):
         await message.channel.send('smh rika not even reply to ' + user)
         await message.channel.send(file=discord.File('images/ri_fumana1.png'))
         return
-    users[serverid][userid]['isReply'] = False
+    del users[serverid][userid]['replyStrings'][initString]
     await message.channel.send('o okie mii~ ')
     await message.channel.send(file=discord.File('images/ri_defa1.png'))
     save('users')
@@ -86,7 +96,7 @@ async def seeSay(user_message, message, serverid):
     strings = parser2(user_message)
     replyString = strings[2]
     middleString = strings[1]
-    initString = strings[0]
+    initString = strings[0].lower()
     middleStrings = middleString.split()
     middleString = middleStrings[1]
     replies2[serverid][initString] = {}
@@ -99,7 +109,7 @@ async def seeSay(user_message, message, serverid):
     await message.channel.send(file=discord.File('images/ri_niyaria1.png'))
 
 async def ignorePhrase(user_message, message, serverid):
-    initString = parser1(user_message)
+    initString = parser1(user_message).lower()
     if (not initString in replies2[serverid]):
         await message.channel.send('rika never pay attention to ' + initString + ' in first place!')
         await message.channel.send(file=discord.File('images/ri_majimea1.png'))
@@ -116,11 +126,11 @@ async def sayAfter(result, result2, lowered, message, user_message, serverid):
         return 0
 
     # repeats after someone else
-    if (len(result2) >= 5 and result2[1] == 'reply' and result2[len(result2) - 2] == 'to'):
+    if (len(result2) >= 8 and result2[1] == 'when'):
         await repeatAfter(user_message, result, message, serverid)
         return 0
 
-    if (len(result2) >= 5 and result2[1] == 'stop' and result2[2] == 'reply' and result2[3] == 'to'):
+    if (len(result2) >= 9 and result2[1] == 'stop' and result2[2] == 'reply' and result2[3] == 'to' and 'when they say' in lowered):
         await stopReplyTo(result, message, serverid)
         return 0
 

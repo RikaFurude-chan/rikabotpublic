@@ -4,6 +4,26 @@ from data import botinfo
 def isQuote(c : str):
     return c == '\"' or c == '“' or c == '”'
 
+def isHide(s : str, i : int):
+    if (len(s) <= i + 1):
+        return False
+    return s[i] == '|' and s[i+1] == '|'
+
+def isPeriod(s):
+    if (s == '.'):
+        return True
+    elif (s == '。'):
+        return True
+    elif (s == '!'):
+        return True
+    elif (s == '！'):
+        return True
+    elif (s == '?'):
+        return True
+    elif (s == '？'):
+        return True
+    return False
+
 def removeExtraSlash(s : str) -> str:
     newString = s
     index = 0
@@ -23,6 +43,7 @@ def howManyQuotes(s : str):
         index = index + 1
     return count
 
+#single quote
 def parser1(s : str) -> str:
     start = -1
     end = -1
@@ -36,6 +57,7 @@ def parser1(s : str) -> str:
             break
     return removeExtraSlash(s[start:end])
 
+#double quote with emotion
 def parser2(s : str):
     start = -1
     end = -1
@@ -71,6 +93,64 @@ def parser2(s : str):
             end = j
             break
     list.append(removeExtraSlash(s[start:end]))
+    return list
+
+#for adding triiva questions
+def parser3(s : str):
+    start = -1
+    end = -1
+    count = 0
+    i = 0
+    for i in range(len(s)):
+        if (isQuote(s[i]) and s[i - 1] != '\\' and count == 0):
+            start = i + 1
+            count = count + 1
+        elif (isQuote(s[i]) and s[i - 1] != '\\' and count == 1):
+            end = i
+            break
+    list = []
+    list.append(removeExtraSlash(s[start:end]))
+    i = i + 1
+    start = i+1
+    end = -1
+    j = i
+    count = 0
+    for j in range(i, len(s)):
+        if (isQuote(s[j]) and s[j - 1] != '\\' and count == 0):
+            start = j + 1
+            count = count + 1
+        elif (isQuote(s[j]) and s[j - 1] != '\\' and count == 1):
+            end = j
+            break
+    list.append(removeExtraSlash(s[start:end]))
+    i = j + 1
+    start = -1
+    end = -1
+    count = 0
+    for j in range(i, len(s)):
+        if (isHide(s, j) and s[j - 1] != '\\' and count == 0):
+            start = j + 2
+            count = count + 1
+        elif (isHide(s,j) and s[j - 1] != '\\' and count == 1):
+            end = j
+            break
+    list.append(s[start:end])
+    return list
+
+def multipleQoutes(s : str):
+    start = -1
+    end = -1
+    count = 0
+    i = 0
+    list = []
+    for i in range(len(s)):
+        if (isQuote(s[i]) and s[i - 1] != '\\' and count == 0):
+            start = i + 1
+            count = count + 1
+        elif (isQuote(s[i]) and s[i - 1] != '\\' and count == 1):
+            end = i
+            list.append(removeExtraSlash(s[start:end]))
+            count = 0
     return list
 
 def isSpaces(s : str):
